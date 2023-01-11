@@ -198,7 +198,7 @@ def create_nat(subnet_id,vpc_id,visibility):
             logger.exception(f'Could not create the NAT gateway.')
             raise
         else:
-            return response
+            return nat_gateway_id
     else:
         logger.info(f'No NAT Gateway is created for private subnets')
 
