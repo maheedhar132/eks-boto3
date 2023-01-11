@@ -136,30 +136,81 @@ def createAndAttachInternetGateway(vpc_id):
     except exception.ClientError:
         logger.info(f'Couldn\'t attach Internet Gateway')
         raise
+    else:
+        return igw
 
 
+def allocateIP(vpc_id):
+    """
+    Allocates an Elastic IP address to use with a NAT gateway
+    """
+    vpc = boto3.client("ec2")
+    try:
+        response = vpc.allocate_address(Domain = 'vpc')
+    except exception.ClientError:
+        logger.exception(f'Cloudn\'t allocate IP for NAT gateway')
+        raise
+    else:
+        return response['AllocationId']
+
+def waitForNatCreation(nat_gateway_id):
+    """
+    Check if successful state is reached every 15 seconds until a successful state is reached.
+    An error is returned after 40 failed checks.
+    """
+    vpc = boto3.client("ec2")
+    try:
+        waiter = vpc.get_waiter('nat_gateway_available')
+        waiter.wait(NatGatewayIds=[nat_gateway_id])
+    except exception.ClientError:
+        logger.exception(f'Clouldn\'t create NAT gatway')
+        raise
 
 
+def create_nat(subnet_id,vpc_id,visibility):
+    """
+    Creates a NAT gateway in the specified subnet.
+    """
+    if visibility.lower() == "public":
+        vpc = boto3.client("ec2")
+        try:
+            # allocate IPV4 address for NAT gateway
+            public_ip_allocation_id = allocateIP(vpc_id)
+
+            # create NAT gateway
+            response = vpc.create_nat_gateway(
+                AllocationId=public_ip_allocation_id,
+                SubnetId=subnet_id,
+                TagSpecifications=[{
+                    'ResourceType':
+                    'natgateway',
+                    'Tags': [{
+                        'Key': 'Name',
+                        'Value': generateTag("NAT Gateway","","")
+                    }]
+                }])
+            nat_gateway_id = response['NatGateway']['NatGatewayId']
+
+            # wait until the NAT gateway is available
+            waitForNatCreation(nat_gateway_id)
+
+        except exception.ClientError:
+            logger.exception(f'Could not create the NAT gateway.')
+            raise
+        else:
+            return response
+    else:
+        logger.info(f'No NAT Gateway is created for private subnets')
 
 
-
-
-
-
-if __name__ == '__main__':
-    az_region = ["a","b"]
-    logger.info('Creating custom VPC..')
-    custom_vpc = create_vpc(cidr("vpc"))
-    logger.info(f'Custom VPC is created with VPC ID: {custom_vpc.id}')
-    visibility = ["public","private"]
-    for j in visibility:
-        for i in az_region:
-            logger.info(f'Creating {j} subnet in az {i} and attaching to VPC')
-            custom_subnet = create_subnet(custom_vpc.id, cidr("subnet"), i, j)
-            logger.info(f'Custom {j} subnet created in az {i} with id: {custom_subnet.id}')
-    logger.info(f'creating security group')
-    securitygroup = createSecurityGroup(custom_vpc.id)
-    logger.info(f'Custom security group {securitygroup.id} created')
-    logger.info(f'Creating Internet Gateway')
-    InternetGateway = createAndAttachInternetGateway(custom_vpc.id)
-    logger.info(f'Created InternetGateway and attached to VPC')
+def createRouteTable(vpc_id,ig_id,visibility):
+    if visibility.lower() == "public":
+        vpc = vpc_resource.Vpc(vpc_id)
+        route_table = vpc.create_route_table()
+        route = route_table.create_route(
+            DestinationCidrBlock = '0.0.0.0/0',
+            GatewayId = ig_id
+        )
+        return route_table.id
+    else:
+        logger.info(f'Skipping private subnets........')
