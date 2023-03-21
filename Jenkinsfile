@@ -1,5 +1,5 @@
 pipeline{
-    agent {Jenkins_Slave}
+    agent any
     stages{
         stage('Create VPC'){
             steps{
