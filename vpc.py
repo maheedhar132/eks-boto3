@@ -214,3 +214,22 @@ def createRouteTable(vpc_id,ig_id,visibility):
         return route_table.id
     else:
         logger.info(f'Skipping private subnets........')
+
+
+if __name__ == '__main__':
+    az_region = ["a","b"]
+    logger.info('Creating custom VPC..')
+    custom_vpc = create_vpc(cidr("vpc"))
+    logger.info(f'Custom VPC is created with VPC ID: {custom_vpc.id}')
+    visibility = ["public","private"]
+    for j in visibility:
+        for i in az_region:
+            logger.info(f'Creating {j} subnet in az {i} and attaching to VPC')
+            custom_subnet = create_subnet(custom_vpc.id, cidr("subnet"), i, j)
+            logger.info(f'Custom {j} subnet created in az {i} with id: {custom_subnet.id}')
+    logger.info(f'creating security group')
+    securitygroup = createSecurityGroup(custom_vpc.id)
+    logger.info(f'Custom security group {securitygroup.id} created')
+    logger.info(f'Creating Internet Gateway')
+    InternetGateway = createAndAttachInternetGateway(custom_vpc.id)
+    logger.info(f'Created InternetGateway and attached to VPC')
